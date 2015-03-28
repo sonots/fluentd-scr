@@ -691,7 +691,7 @@ try_flush は OutputThread の run ループから try_flush_interval 毎に呼�
 
 flush_interval が来たので、buffer_chunk_limit に達していないが、top chunk を @queue に積み、削除している。
 この enqueue (push) 処理は全 key (通常は tag) に対してまとめて行われる。
-chunk は key (通常は tag) 毎に作られるので、key (通常は tag) が異なる多様なログを受け取っている場合、その数だけ @queue に一気に積み上げられる。
+chunk は key (通常は tag) 毎に作られるので、tag が異なる多様なログを受け取っている場合、その数だけ @queue に一気に積み上げられる。
 
 ```ruby
     def push(key)
@@ -716,8 +716,7 @@ chunk は key (通常は tag) 毎に作られるので、key (通常は tag) が
 
 @queue から chunk を１つ取り出して、データ送信を行う。
 
-pop というメソッド名だが、pop するだけではなく、write (送信)もしている。
-write 成功した場合のみ、取り除く。
+pop というメソッド名だが、pop するだけではなく、write (送信)もしている。write 成功した場合のみ、取り除く。
 
 ```ruby
     def pop(out)
@@ -755,10 +754,9 @@ write 成功した場合のみ、取り除く。
     end
 ```
 
-大事な補足：chunk は key (通常は tag) 毎に作られる。enqueue 処理は flush\_interval 毎に１回される。それぞれの key (通常は tag) の top chunk １つが enqueue される。多種多様な key (通常は tag) がある場合、複数 enqueue されることになる。
-また pop (and 送信) 処理は try\_flush\_interval 毎に実行されるが、1 chunk しか pop されない。
-buffer_chunk_limit が小さい場合、十分なパフォーマンスが出ない可能性があるし、
-enqueue された chunk を連続して一斉に pop したい場合、queued\_chunk\_flush\_interval をごくごく小さな値に設定する必要がある。
+大事な補足：enqueue 処理は flush\_interval 毎に１回される。全 key (通常は tag) の chunk がまとめて enqueue される。
+また pop (and 送信) 処理は try\_flush\_interval 毎に実行されるが、こちらは 1 chunk しか pop されない。
+buffer_chunk_limit が小さい場合、十分なパフォーマンスが出ない可能性があるし、 enqueue された chunk を連続して一斉に pop したい場合、queued_chunk_flush_interval をごくごく小さな値に設定する必要がある。
 
 考察：try_flush_interval 毎の pop (and 送信)処理で、複数 chunk 一気に送るようにしたらどうだろう。
 
@@ -1023,7 +1021,7 @@ USR1 シグナルを送ると、Buffer の内容を flush してくれること�
 * enqueue のタイミング２つ
   * メインスレッド(ObjectBufferedOutput#emit) で、chunk にデータを追加すると buffer_chunk_limit を超える場合
   * OutputThread (ObjectBufferedOutput#try_flush) で、flush_interval 毎
-    * key (通常は tag) ごとの top chunk がまとめて enqueue される
+    * key (通常は tag) それぞれの top chunk が一気に enqueue される
 * dequeue(pop) のタイミング
   * queue に次の chunk がある場合、queued_chunk_flush_interval 毎
   * queue に次の chunk がない場合、try_flush_interval 毎
@@ -1034,7 +1032,7 @@ USR1 シグナルを送ると、Buffer の内容を flush してくれること�
 性能評価結果からの補足
 
 * パフォーマンスをあげるためには buffer_chunk_limit を増やすと良い、と言ったが実際に buffer_chunk_limit を増やすと 8m ぐらいで詰まりやすくなり、性能劣化する。[out_forward って詰まると性能劣化する？](http://togetter.com/li/595607)
-* なので、buffer_chunk_limit は 1m ぐらいに保ちつつ queued_chunk_flush_interval および try_flush_interval を 0.1 など小さい値にしてじゃんじゃん吐き出すと良さそう
+* なので、buffer_chunk_limit は 1m ぐらいに保ちつつ try_flush_interval を 0.1、queued_chunk_flush_interval を 0.01 など小さい値にしてじゃんじゃん吐き出すと良さそう
 
 考察
 
