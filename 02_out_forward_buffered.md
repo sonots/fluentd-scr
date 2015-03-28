@@ -1021,7 +1021,7 @@ USR1 シグナルを送ると、Buffer の内容を flush してくれること�
 * enqueue のタイミング２つ
   * メインスレッド(ObjectBufferedOutput#emit) で、chunk にデータを追加すると buffer_chunk_limit を超える場合
   * OutputThread (ObjectBufferedOutput#try_flush) で、flush_interval 毎
-    * key (通常は tag) それぞれの top chunk が一気に enqueue される
+    * この際、key (通常は tag) それぞれの top chunk が一気に enqueue される
 * dequeue(pop) のタイミング
   * queue に次の chunk がある場合、queued_chunk_flush_interval 毎
   * queue に次の chunk がない場合、try_flush_interval 毎
