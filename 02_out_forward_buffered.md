@@ -420,7 +420,7 @@ try_flush ではデータを queue から pop してデータ送信する。
 
 ### ObjectBufferedOutput#emit の流れ
 
-Fluentd プラグインの仕組みが #emit を呼び出してデータを送って来る
+Fluentd プラグインの仕組みが #emit を呼び出してデータを送って来る。通常は chunk の key は tag だが、TimeSlicedOutput の場合は時間を format した文字列になり、key ごとに chunk が作られる。
 
 [ObjectBufferedOutput#emit](https://github.com/fluent/fluentd/blob/9fea4bd69420daf86411937addc6000dfcc6043b/lib/fluent/output.rb#L417-L429)
 
@@ -440,6 +440,7 @@ Fluentd プラグインの仕組みが #emit を呼び出してデータを送�
 
 [BasicBuffer#emit](https://github.com/fluent/fluentd/blob/9fea4bd69420daf86411937addc6000dfcc6043b/lib/fluent/buffer.rb#L165-L214) @buffer.emit
 
+*  key (通常は tag) 毎に chunk を処理
 *  top chunk が buffer_chunk_limit を超えてなければ chunk に data を格納
 *  超えていれば次の処理
   * 入らなかったデータを next chunk に格納
@@ -614,7 +615,7 @@ try_flush は OutputThread の run ループから try_flush_interval 毎に呼�
 主要な流れをざっくり
 
 * buffer_chunk_limit に達していなくても flush_interval が来たら enqueue する
-* queue から chunk を pop して output#write (正確には、取り出して => write して => 成功したら削除)
+* queue から chunk を １つ pop して output#write (正確には、取り出して => write して => 成功したら削除)
 
 ```ruby
     def try_flush
@@ -688,6 +689,8 @@ try_flush は OutputThread の run ループから try_flush_interval 毎に呼�
 [BasicBuffer#push](https://github.com/fluent/fluentd/blob/9fea4bd69420daf86411937addc6000dfcc6043b/lib/fluent/buffer.rb#L244-L259)
 
 flush_interval が来たので、buffer_chunk_limit に達していないが、top chunk を @queue に積み、削除している。
+この enqueue (push) 処理は全 key (通常は tag) に対してまとめて行われる。
+chunk は key (通常は tag) 毎に作られるので、key (通常は tag) が異なる多様なログを受け取っている場合、その数だけ @queue に一気に積み上げられる。
 
 ```ruby
     def push(key)
@@ -709,6 +712,8 @@ flush_interval が来たので、buffer_chunk_limit に達していないが、t
 ```
 
 [BasicBuffer#pop](https://github.com/fluent/fluentd/blob/9fea4bd69420daf86411937addc6000dfcc6043b/lib/fluent/buffer.rb#L261-L293)
+
+@queue から chunk を１つ取り出して、データ送信を行う。
 
 pop というメソッド名だが、pop するだけではなく、write (送信)もしている。
 write 成功した場合のみ、取り除く。
@@ -749,9 +754,10 @@ write 成功した場合のみ、取り除く。
     end
 ```
 
-大事な補足：enqueue 処理は flush\_interval 毎に１回される。1 chunk の enqueue しかされない。
-また pop (and 送信) 処理は try\_flush\_interval 毎に実行されるが、こちらも 1 chunk しか pop されない。
-buffer_chunk_limit が小さい場合、十分なパフォーマンスが出ない可能性がある。
+大事な補足：chunk は key (通常は tag) 毎に作られる。enqueue 処理は flush\_interval 毎に１回される。それぞれの key (通常は tag) の top chunk １つが enqueue される。多種多様な key (通常は tag) がある場合、複数 enqueue されることになる。
+また pop (and 送信) 処理は try\_flush\_interval 毎に実行されるが、1 chunk しか pop されない。
+buffer_chunk_limit が小さい場合、十分なパフォーマンスが出ない可能性があるし、
+enqueue された chunk を連続して一斉に pop したい場合、queued\_chunk\_flush\_interval をごくごく小さな値に設定する必要がある。
 
 考察：try_flush_interval 毎の pop (and 送信)処理で、複数 chunk 一気に送るようにしたらどうだろう。
 
@@ -1016,6 +1022,7 @@ USR1 シグナルを送ると、Buffer の内容を flush してくれること�
 * enqueue のタイミング２つ
   * メインスレッド(ObjectBufferedOutput#emit) で、chunk にデータを追加すると buffer_chunk_limit を超える場合
   * OutputThread (ObjectBufferedOutput#try_flush) で、flush_interval 毎
+    * key (通常は tag) ごとの top chunk がまとめて enqueue される
 * dequeue(pop) のタイミング
   * queue に次の chunk がある場合、queued_chunk_flush_interval 毎
   * queue に次の chunk がない場合、try_flush_interval 毎
@@ -1025,7 +1032,7 @@ USR1 シグナルを送ると、Buffer の内容を flush してくれること�
 
 性能評価結果からの補足
 
-* パフォーマンスをあげるためには buffer_chunk_limit を増やすと良い、と行ったが実際に buffer_chunk_limit を増やすと 8m ぐらいで詰まりやすくなり、性能劣化する。[out_forward って詰まると性能劣化する？](http://togetter.com/li/595607)
+* パフォーマンスをあげるためには buffer_chunk_limit を増やすと良い、と言ったが実際に buffer_chunk_limit を増やすと 8m ぐらいで詰まりやすくなり、性能劣化する。[out_forward って詰まると性能劣化する？](http://togetter.com/li/595607)
 * なので、buffer_chunk_limit は 1m ぐらいに保ちつつ queued_chunk_flush_interval および try_flush_interval を 0.1 など小さい値にしてじゃんじゃん吐き出すと良さそう
 
 考察
