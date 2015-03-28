@@ -615,6 +615,7 @@ try_flush は OutputThread の run ループから try_flush_interval 毎に呼�
 主要な流れをざっくり
 
 * buffer_chunk_limit に達していなくても flush_interval が来たら enqueue する
+  * key (通常は tag) 毎の top chunk を一気に enqueue する 
 * queue から chunk を １つ pop して output#write (正確には、取り出して => write して => 成功したら削除)
 
 ```ruby
