@@ -3,13 +3,7 @@
 Fluentd が使っているイベント駆動ライブラリである [cool.io](https://github.com/tarcieri/cool.io) をカバーする。
 
 なお、オリジナル作者である [Tony](https://github.com/tarcieri) は [Celluloid IO](https://github.com/celluloid/celluloid-io) を使ってね、
-と言っているので、普通はそちらを使うべき。
-
-Fluentd が未だに cool.io を使っているのは
-
-1. コミット権ももらったし(repeatedly)、困っていない
-
-ぐらいの理由である。
+と言っているので、普通はそちらを使うべきなのだろうが、以前 Celluloid を試した時にパフォーマンスが落ちたため、Fluentd では引き続き cool.io を使っている。
 
 Cool.io は内部的にはマルチプラットフォームイベント駆動ライブラリである libev
 を利用し、ruby から呼べるようにC拡張APIでラップしているので、そちらから入門する
